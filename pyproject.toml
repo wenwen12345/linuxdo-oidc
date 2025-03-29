@@ -1,0 +1,11 @@
+[project]
+name = "pool"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "dotenv>=0.9.9",
+    "fastapi[all]>=0.115.12",
+    "httpx>=0.28.1",
+]
