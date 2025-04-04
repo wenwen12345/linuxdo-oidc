@@ -199,3 +199,4 @@ def callback(code: str, state: str):
         if conn and conn.is_connected():
             conn.close()
             print("Callback database connection closed.")
+
