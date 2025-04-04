@@ -237,14 +237,15 @@ async def update_channel_secret(request: AddKeyRequest = Body(...)):
             if channel.get("name") == request.channel_name:
                 print(f"Found channel: {request.channel_name}")
                 current_secret = channel.get("secret", "")
-                # Ensure secrets are treated as a list of lines
-                secrets_list = current_secret.splitlines() if current_secret else []
-                # Append new keys, avoiding duplicates if necessary (optional)
-                new_keys_to_add = [key for key in request.key_list if key not in secrets_list]
-                updated_secrets_list = secrets_list + new_keys_to_add
+                # Ensure secrets are treated as a list of lines, filtering out empty lines
+                secrets_list = [line for line in current_secret.splitlines() if line.strip()] if current_secret else []
+                # Filter incoming keys to remove empty strings and duplicates already present
+                valid_new_keys = [key for key in request.key_list if key.strip() and key not in secrets_list]
+                # Combine lists and filter again to ensure no empty strings remain
+                updated_secrets_list = [key for key in (secrets_list + valid_new_keys) if key.strip()]
                 channel["secret"] = "\n".join(updated_secrets_list)
                 channel_found = True
-                print(f"Updated secret for channel '{request.channel_name}'.")
+                print(f"Updated secret for channel '{request.channel_name}' with keys: {valid_new_keys}")
                 break # Stop after finding the channel
 
         if not channel_found:
