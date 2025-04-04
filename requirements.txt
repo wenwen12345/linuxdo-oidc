@@ -39,3 +39,4 @@ ujson==5.10.0
 uvicorn==0.34.0
 watchfiles==1.0.4
 websockets==15.0.1
+mysql-connector-python==9.2.0
