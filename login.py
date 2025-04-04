@@ -1,10 +1,12 @@
-from fastapi import FastAPI
-from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi import FastAPI, Body, HTTPException
+from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
+from pydantic import BaseModel
+from typing import List
 from dotenv import load_dotenv
 import uuid
 import os
 import httpx
-from fastapi import HTTPException
+import yaml # Add yaml import
 # import mysql # Removed unused import
 import mysql.connector # Use this connector
 import hashlib # Add hashlib import
@@ -12,6 +14,13 @@ import hashlib # Add hashlib import
 load_dotenv()
 
 app = FastAPI()
+
+# --- Pydantic Models ---
+class UpdateChannelRequest(BaseModel):
+    username_key_list: List[str]
+    channel_name: str
+
+# --- Global Variables & Helpers ---
 
 # WARNING: This in-memory storage is for demonstration only.
 # It's not suitable for production, multi-process, or multi-instance setups.
@@ -199,4 +208,62 @@ def callback(code: str, state: str):
         if conn and conn.is_connected():
             conn.close()
             print("Callback database connection closed.")
+
+
+# --- New Endpoint for Updating Channel Secret ---
+@app.post("/update_channel_secret")
+async def update_channel_secret(request: UpdateChannelRequest = Body(...)):
+    """
+    Updates the secret field of a specified channel in the config file
+    by appending a list of username keys.
+    """
+    config_path = os.getenv("config_path")
+    if not config_path or not os.path.exists(config_path):
+        print(f"Error: Config path '{config_path}' not found or not set in environment.")
+        raise HTTPException(status_code=500, detail="Configuration file path not configured or file not found.")
+
+    try:
+        # Read the current config
+        with open(config_path, 'r', encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+            if not config or "channel" not in config:
+                print("Error: Invalid config file format.")
+                raise HTTPException(status_code=500, detail="Invalid configuration file format.")
+
+        channel_found = False
+        # Find the channel and update its secret
+        for channel in config.get("channel", []):
+            if channel.get("name") == request.channel_name:
+                print(f"Found channel: {request.channel_name}")
+                current_secret = channel.get("secret", "")
+                # Ensure secrets are treated as a list of lines
+                secrets_list = current_secret.splitlines() if current_secret else []
+                # Append new keys, avoiding duplicates if necessary (optional)
+                new_keys_to_add = [key for key in request.username_key_list if key not in secrets_list]
+                updated_secrets_list = secrets_list + new_keys_to_add
+                channel["secret"] = "\n".join(updated_secrets_list)
+                channel_found = True
+                print(f"Updated secret for channel '{request.channel_name}'.")
+                break # Stop after finding the channel
+
+        if not channel_found:
+            print(f"Error: Channel '{request.channel_name}' not found in config.")
+            raise HTTPException(status_code=404, detail=f"Channel '{request.channel_name}' not found.")
+
+        # Write the updated config back
+        with open(config_path, 'w', encoding="utf-8") as f:
+            yaml.safe_dump(config, f, allow_unicode=True, sort_keys=False) # Use 'w' to overwrite, sort_keys=False to preserve order
+        
+        print("Config file updated successfully.")
+        return JSONResponse(content={"message": f"Channel '{request.channel_name}' updated successfully."}, status_code=200)
+
+    except yaml.YAMLError as e:
+        print(f"Error processing YAML file: {e}")
+        raise HTTPException(status_code=500, detail=f"Error processing configuration file: {e}")
+    except IOError as e:
+        print(f"File I/O error: {e}")
+        raise HTTPException(status_code=500, detail=f"File operation failed: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred during channel update: {e}")
+        raise HTTPException(status_code=500, detail=f"An unexpected internal error occurred: {e}")
 
