@@ -237,15 +237,20 @@ async def update_channel_secret(request: AddKeyRequest = Body(...)):
             if channel.get("name") == request.channel_name:
                 print(f"Found channel: {request.channel_name}")
                 current_secret = channel.get("secret", "")
-                # Ensure secrets are treated as a list of lines, filtering out empty lines
-                secrets_list = [line for line in current_secret.splitlines() if line.strip()] if current_secret else []
-                # Filter incoming keys to remove empty strings and duplicates already present
-                valid_new_keys = [key for key in request.key_list if key.strip() and key not in secrets_list]
-                # Combine lists and filter again to ensure no empty strings remain
-                updated_secrets_list = [key for key in (secrets_list + valid_new_keys) if key.strip()]
-                channel["secret"] = "\n".join(updated_secrets_list)
+                # Use sets for efficient handling of unique, non-empty keys
+                existing_keys = set(line for line in current_secret.splitlines() if line.strip()) if current_secret else set()
+                new_keys_to_add = set(key for key in request.key_list if key.strip())
+
+                # Combine old and new keys, maintaining uniqueness
+                all_keys_set = existing_keys.union(new_keys_to_add)
+
+                # Sort the keys for consistent order and join with newline
+                # This ensures no empty lines between valid keys
+                channel["secret"] = "\n".join(sorted(list(all_keys_set)))
                 channel_found = True
-                print(f"Updated secret for channel '{request.channel_name}' with keys: {valid_new_keys}")
+                # Calculate keys actually added for logging/notification
+                actually_added_keys = list(new_keys_to_add - existing_keys)
+                print(f"Updated secret for channel '{request.channel_name}'. Keys added: {actually_added_keys}")
                 break # Stop after finding the channel
 
         if not channel_found:
@@ -258,12 +263,38 @@ async def update_channel_secret(request: AddKeyRequest = Body(...)):
         
         # Send ntfy notification
         ntfy_url = os.getenv("ntfy_url")
-        if ntfy_url:
+        # Retrieve the list of keys actually added from the loop's scope if channel was found
+        # Note: This assumes 'actually_added_keys' is accessible here.
+        # If the loop structure changes significantly, this might need adjustment.
+        # We check if 'channel_found' is True to ensure 'actually_added_keys' was set.
+        keys_actually_added_for_notification = []
+        if channel_found:
+             # Find the channel again to get the calculated added keys (or pass it out of the loop)
+             # For simplicity, let's re-calculate here based on request, though less efficient.
+             # A better approach might involve passing 'actually_added_keys' out of the loop.
+             temp_config_path = os.getenv("config_path") # Re-read might be needed if state changed externally
+             with open(temp_config_path, 'r', encoding="utf-8") as f_temp:
+                 temp_config = yaml.safe_load(f_temp)
+             temp_secret = ""
+             for ch in temp_config.get("channel", []):
+                 if ch.get("name") == request.channel_name:
+                     temp_secret = ch.get("secret", "")
+                     break
+             temp_existing_keys = set(line for line in temp_secret.splitlines() if line.strip()) if temp_secret else set()
+             # Calculate based on the *original* request's keys that are *not* in the *final* existing keys
+             # This logic is complex due to scope. Let's simplify the notification message
+             # to just report the action, not the specific keys added, to avoid re-reading/complexity.
+             # OR: We can use the original request.key_list for the notification message,
+             # acknowledging it might include duplicates or already existing keys.
+             keys_for_message = request.key_list # Use original list for simplicity in message
+
+        if ntfy_url and channel_found: # Only notify if channel was found and updated
             try:
-                keys_added_str = ", ".join(request.key_list) # Join keys for the message
-                message = f"User '{request.username}' added keys [{keys_added_str}] to channel '{request.channel_name}'."
+                # Use the filtered list of keys from the request for the message
+                keys_added_str = ", ".join(key for key in keys_for_message if key.strip())
+                message = f"User '{request.username}' updated keys for channel '{request.channel_name}'. Requested keys: [{keys_added_str}]."
                 httpx.post(ntfy_url, data=message.encode('utf-8'))
-                print(f"Sent ntfy notification for channel update: {request.channel_name}")
+                print(f"Sent ntfy notification for channel update attempt: {request.channel_name}")
             except Exception as ntfy_err:
                 # Log the error but don't fail the request just because notification failed
                 print(f"Warning: Failed to send ntfy notification: {ntfy_err}")
