@@ -254,8 +254,21 @@ async def update_channel_secret(request: AddKeyRequest = Body(...)):
         # Write the updated config back
         with open(config_path, 'w', encoding="utf-8") as f:
             yaml.safe_dump(config, f, allow_unicode=True, sort_keys=False) # Use 'w' to overwrite, sort_keys=False to preserve order
-            # add ntfy notice ai!
         
+        # Send ntfy notification
+        ntfy_url = os.getenv("ntfy_url")
+        if ntfy_url:
+            try:
+                keys_added_str = ", ".join(request.key_list) # Join keys for the message
+                message = f"User '{request.username}' added keys [{keys_added_str}] to channel '{request.channel_name}'."
+                httpx.post(ntfy_url, data=message.encode('utf-8'))
+                print(f"Sent ntfy notification for channel update: {request.channel_name}")
+            except Exception as ntfy_err:
+                # Log the error but don't fail the request just because notification failed
+                print(f"Warning: Failed to send ntfy notification: {ntfy_err}")
+        else:
+            print("Warning: ntfy_url environment variable not set. Skipping notification.")
+
         print("Config file updated successfully.")
         return JSONResponse(content={"message": f"Channel '{request.channel_name}' updated successfully."}, status_code=200)
 
