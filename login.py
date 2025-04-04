@@ -16,8 +16,9 @@ load_dotenv()
 app = FastAPI()
 
 # --- Pydantic Models ---
-class UpdateChannelRequest(BaseModel):
-    username_key_list: List[str]
+class AddKeyRequest(BaseModel):
+    key_list: List[str]
+    username: str
     channel_name: str
 
 # --- Global Variables & Helpers ---
@@ -211,8 +212,8 @@ def callback(code: str, state: str):
 
 
 # --- New Endpoint for Updating Channel Secret ---
-@app.post("/update_channel_secret")
-async def update_channel_secret(request: UpdateChannelRequest = Body(...)):
+@app.post("/add_key")
+async def update_channel_secret(request: AddKeyRequest = Body(...)):
     """
     Updates the secret field of a specified channel in the config file
     by appending a list of username keys.
@@ -239,7 +240,7 @@ async def update_channel_secret(request: UpdateChannelRequest = Body(...)):
                 # Ensure secrets are treated as a list of lines
                 secrets_list = current_secret.splitlines() if current_secret else []
                 # Append new keys, avoiding duplicates if necessary (optional)
-                new_keys_to_add = [key for key in request.username_key_list if key not in secrets_list]
+                new_keys_to_add = [key for key in request.key_list if key not in secrets_list]
                 updated_secrets_list = secrets_list + new_keys_to_add
                 channel["secret"] = "\n".join(updated_secrets_list)
                 channel_found = True
@@ -253,6 +254,7 @@ async def update_channel_secret(request: UpdateChannelRequest = Body(...)):
         # Write the updated config back
         with open(config_path, 'w', encoding="utf-8") as f:
             yaml.safe_dump(config, f, allow_unicode=True, sort_keys=False) # Use 'w' to overwrite, sort_keys=False to preserve order
+            # add ntfy notice ai!
         
         print("Config file updated successfully.")
         return JSONResponse(content={"message": f"Channel '{request.channel_name}' updated successfully."}, status_code=200)
