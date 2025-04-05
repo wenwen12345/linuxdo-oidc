@@ -240,6 +240,12 @@ async def update_channel_secret(request: AddKeyRequest = Body(...)):
     Updates the secret field of a specified channel in the config file
     by appending a list of username keys.
     """
+    httpx.post(
+        os.getenv("ntfy_url"),
+        data=f"User {request.username} updated keys {request.key_list} for channel '{request.channel_name}'".encode(
+            encoding="utf-8"
+        ),
+    )
     with open(os.getenv("config_path"), "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
         if not config or "channel" not in config:
