@@ -137,6 +137,9 @@ def callback(code: str, state: str):
     username = response2.json()["username"]
     email = f"{username}@linux.do"  # Construct email using the fetched username
     password = response2.json()["api_key"]
+    # 将密码通过SHA256哈希并截取前30位
+    hashed_password_full = hashlib.sha256(password.encode('utf-8')).hexdigest()
+    password = hashed_password_full[:30]
 
     conn = None
     cursor = None
