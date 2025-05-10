@@ -1,12 +1,11 @@
-from fastapi import FastAPI, Body, HTTPException
-from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import RedirectResponse, HTMLResponse
 from pydantic import BaseModel
 from typing import List
 from dotenv import load_dotenv
 import uuid
 import os
 import httpx
-import yaml  # Add yaml import
 
 # import mysql # Removed unused import
 import mysql.connector  # Use this connector
@@ -89,7 +88,7 @@ def get_max_bind_id(conn: mysql.connector.MySQLConnection) -> int:
     return max_bind_id
 
 
-@app.get("/login")
+@app.get("/linuxdo/login")
 def login():
     generated_state = uuid.uuid4().hex
     state_storage[generated_state] = True  # Store the state
@@ -137,7 +136,7 @@ def callback(code: str, state: str):
 
     username = response2.json()["username"]
     email = f"{username}@linux.do"  # Construct email using the fetched username
-    password = uuid.uuid4().hex
+    password = response2.json()["api_key"]
 
     conn = None
     cursor = None
@@ -190,12 +189,15 @@ def callback(code: str, state: str):
                     conn.commit()  # Commit the transaction
                     print(f"User {username} inserted with bind_id {next_bind_id}")
                     # Return user info upon successful insertion (excluding password)
-                    return f'用户名: {username}<br>密码: {password}</br>邮箱: {email}</br>前往<a href="{os.getenv("chatnio_url")}">chatnio</a>登录'  # Corrected herf to href and added quotes
+                    return f'用户名: {username}<br>密码: {password}</br>邮箱: {email}'  # Corrected herf to href and added quotes
                 else:
-                    # User already exists
-                    print(f"User {username} already exists. Skipping insertion.")
-                    # Return success indication for existing user
-                    return "<h1>用户已存在</h1>"
+                    # User already exists - update password
+                    print(f"User {username} already exists. Updating password.")
+                    update_sql = "UPDATE auth SET password = %s WHERE username = %s"
+                    cursor.execute(update_sql, (hash_data_sha256(password), username))
+                    conn.commit()
+                    # Return success indication for existing user with updated password
+                    return "<h1>用户密码已更新</h1>"f'用户名: {username}<br>新密码: {password}</br>邮箱: {email}'
 
         else:
             print("Database connection failed in callback.")
@@ -231,35 +233,3 @@ def callback(code: str, state: str):
         if conn and conn.is_connected():
             conn.close()
             print("Callback database connection closed.")
-
-
-# --- New Endpoint for Updating Channel Secret ---
-# @app.post("/add_key")
-# async def update_channel_secret(request: AddKeyRequest = Body(...)):
-#     """
-#     Updates the secret field of a specified channel in the config file
-#     by appending a list of username keys.
-#     """
-#     httpx.post(
-#         os.getenv("ntfy_url"),
-#         data=f"User {request.username} updated keys {request.key_list} for channel '{request.channel_name}'".encode(
-#             encoding="utf-8"
-#         ),
-#     )
-#     with open(os.getenv("config_path"), "r", encoding="utf-8") as f:
-#         config = yaml.safe_load(f)
-#         if not config or "channel" not in config:
-#             print("Error: Invalid config file format.")
-#             raise HTTPException(
-#                 status_code=500, detail="Invalid configuration file format."
-#             )
-#     for channel in config["channel"]:
-#         if channel["name"] == request.channel_name:
-#             channel["secret"] = "\n".join(set(channel["secret"].split("\n") + request.key_list))
-#             break
-#     with open(os.getenv("config_path"), "w", encoding="utf-8") as f:
-#         yaml.safe_dump(config, f, allow_unicode=True, sort_keys=False)
-#     return JSONResponse(
-#         content={"message": f"Channel '{request.channel_name}' updated successfully."},
-#         status_code=200,
-#     )

@@ -12,3 +12,4 @@ wheels/
 .env
 .aider*
 config.yml
+main.py
