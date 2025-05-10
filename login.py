@@ -88,7 +88,7 @@ def get_max_bind_id(conn: mysql.connector.MySQLConnection) -> int:
     return max_bind_id
 
 
-@app.get("/linuxdo/login")
+@app.get("/login")
 def login():
     generated_state = uuid.uuid4().hex
     state_storage[generated_state] = True  # Store the state
