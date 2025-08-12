@@ -300,7 +300,7 @@ def token_endpoint(
             "aud": client_id or os.getenv("client_id"),
             "exp": now + 3600,
             "iat": now,
-            "token_type": "access_token"
+            "token_type": "Bearer"
         }
         
         # Load RSA private key for signing
