@@ -5,10 +5,7 @@
         "src": "login.py",
         "use": "@vercel/python",
         "config": {
-          "runtime": "python3.12",
-          "wsgi": {
-            "app": "login:app"
-          }
+          "runtime": "python3.12"
         }
       }
     ],
