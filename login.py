@@ -233,8 +233,8 @@ def token_endpoint(
     client_id: Optional[str] = Form(None),
     client_secret: Optional[str] = Form(None)
 ):
-    if grant_type != "authorization_code":
-        raise HTTPException(status_code=400, detail="unsupported_grant_type")
+    # if grant_type != "authorization_code":
+    #     raise HTTPException(status_code=400, detail="unsupported_grant_type")
     
     # Validate client secret
     expected_client_secret = os.getenv("expected_client_secret")
