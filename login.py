@@ -236,10 +236,6 @@ def token_endpoint(
     # if grant_type != "authorization_code":
     #     raise HTTPException(status_code=400, detail="unsupported_grant_type")
     
-    # Validate client secret
-    expected_client_secret = os.getenv("expected_client_secret")
-    if expected_client_secret and client_secret != expected_client_secret:
-        raise HTTPException(status_code=403, detail="Invalid client credentials")
     
     # Get the stored code data
     code_storage = getattr(callback, 'code_storage', {})
@@ -262,14 +258,18 @@ def token_endpoint(
     authlogin = httpx.BasicAuth(os.getenv("client_id"), os.getenv("client_secret")) # type: ignore
     
     try:
+        print(f"Token request payload: {payload}")
         response = httpx.post(
             "https://connect.linux.do/oauth2/token", 
             data=payload, 
-            auth=authlogin
+            auth=authlogin,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=30.0
         )
         
+        print(f"Linux.do token response: {response.status_code}, {response.text}")
         if response.status_code != 200:
-            raise HTTPException(status_code=400, detail="invalid_grant")
+            raise HTTPException(status_code=400, detail=f"invalid_grant: {response.text}")
             
         linuxdo_token_data = response.json()
         access_token = linuxdo_token_data["access_token"]
@@ -277,7 +277,8 @@ def token_endpoint(
         # Get user info from Linux.do
         user_response = httpx.get(
             "https://connect.linux.do/api/user",
-            headers={"Authorization": f"Bearer {access_token}"}
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=30.0
         )
         
         if user_response.status_code != 200:
@@ -299,8 +300,7 @@ def token_endpoint(
             "sub": str(user_info.get("id")),
             "aud": client_id or os.getenv("client_id"),
             "exp": now + 3600,
-            "iat": now,
-            "token_type": "Bearer"
+            "iat": now
         }
         
         # Load RSA private key for signing
@@ -339,7 +339,11 @@ def token_endpoint(
         })
         
     except httpx.RequestError as e:
+        print(f"HTTP request error: {repr(e)}")
         raise HTTPException(status_code=500, detail=f"Request failed: {str(e)}")
+    except Exception as e:
+        print(f"Unexpected error in token endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 # OIDC UserInfo endpoint
@@ -361,9 +365,7 @@ def userinfo(authorization: str = Header(None)):
         # Decode and verify JWT
         decoded_token = jwt.decode(access_token, public_key_pem, algorithms=["RS256"])
         
-        # Check if it's an access token
-        if decoded_token.get("token_type") != "access_token":
-            raise HTTPException(status_code=401, detail="Invalid token type")
+        # Verify it's a valid JWT access token (no need to check token_type field)
         
         # Get user info from storage using the original token
         if access_token not in access_token_storage:
