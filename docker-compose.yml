@@ -2,10 +2,8 @@ version: '3.8'
 
 services:
   linuxdo-oidc:
-    build: .
+    image: ghcr.io/wenwen12345/linuxdo-oidc:latest
     ports:
       - "8000:8000"
-    env-file: .env
-    volumes:
-      - .:/app
+    env_file: .env
     restart: unless-stopped
