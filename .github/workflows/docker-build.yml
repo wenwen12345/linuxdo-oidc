@@ -1,0 +1,149 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{mar}}.{{minor}}
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  compose-build:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name != 'pull_request'
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Create docker-compose archive
+      run: |
+        # Create a deployment package with docker-compose.yml and .env.example
+        mkdir -p deploy
+        cp docker-compose.yml deploy/
+        
+        # Create .env.example with all required environment variables
+        cat > deploy/.env.example << 'EOF'
+        BASE_URL=https://your-domain.com
+        CLIENT_ID=your_client_id
+        CLIENT_SECRET=your_client_secret
+        REDIRECT_URI=https://your-domain.com/callback
+        PRIVATE_KEY="-----BEGIN PRIVATE KEY-----
+        your_private_key_content_here
+        -----END PRIVATE KEY-----"
+        EXPECTED_CLIENT_SECRET=your_expected_client_secret
+        MIN_TRUST_LEVEL=2
+        EOF
+        
+        # Create deployment instructions
+        cat > deploy/README.md << 'EOF'
+        # LinuxDo OIDC Deployment
+        
+        ## Quick Start
+        
+        1. Copy `.env.example` to `.env`:
+           ```bash
+           cp .env.example .env
+           ```
+        
+        2. Edit `.env` with your actual values
+        
+        3. Run with docker-compose:
+           ```bash
+           docker-compose up -d
+           ```
+        
+        ## Environment Variables
+        
+        - `BASE_URL`: Your OIDC provider base URL
+        - `CLIENT_ID`: LinuxDo OAuth client ID
+        - `CLIENT_SECRET`: LinuxDo OAuth client secret
+        - `REDIRECT_URI`: OAuth callback URI
+        - `PRIVATE_KEY`: RSA private key for JWT signing
+        - `EXPECTED_CLIENT_SECRET`: Expected client secret for token endpoint
+        - `MIN_TRUST_LEVEL`: Minimum trust level required (default: 2)
+        
+        EOF
+        
+        # Create archive
+        tar -czf docker-compose-deployment.tar.gz -C deploy .
+
+    - name: Upload deployment package
+      uses: actions/upload-artifact@v4
+      with:
+        name: docker-compose-deployment
+        path: docker-compose-deployment.tar.gz
+        retention-days: 30
+
+    - name: Create Release (on tag)
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: docker-compose-deployment.tar.gz
+        body: |
+          ## Docker Compose Deployment Package
+          
+          Download `docker-compose-deployment.tar.gz` and extract it to get started:
+          
+          ```bash
+          tar -xzf docker-compose-deployment.tar.gz
+          cd deploy
+          cp .env.example .env
+          # Edit .env with your configuration
+          docker-compose up -d
+          ```
+          
+          ## Docker Image
+          
+          Pull the image directly:
+          ```bash
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+          ```

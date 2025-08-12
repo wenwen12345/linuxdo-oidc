@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  linuxdo-oidc:
+    build: .
+    ports:
+      - "8000:8000"
+    env-file: .env
+    volumes:
+      - .:/app
+    restart: unless-stopped
